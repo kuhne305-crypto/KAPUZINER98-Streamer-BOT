@@ -4,16 +4,20 @@ Yu-Gi-Oh × Lunalight × Made in Abyss Theme · Python (discord.py) · läuft au
 
 ## Was der Bot kann
 
-- `/setup` legt alle fehlenden Rollen, Kategorien und Channels im Theme an. Er löscht nichts, und man kann ihn beliebig oft ausführen.
-  Mit der Option `bestehende_mitglieder:True` bekommen alle, die schon auf dem Server sind, direkt die Duelist-Rolle.
-- Twitch-Live-Alerts: postet automatisch in 🔴│live-beschwörung und pingt die 🔔 Live-Ping-Rolle.
+- `/setup` legt alle fehlenden Rollen, Kategorien und Channels im Theme an. Er löscht nichts und kann beliebig oft ausgeführt werden.
+  Was es unter einem alten Namen schon gibt (Eintrag `alt` in `config.py`), wird automatisch umbenannt.
+  Mit `bestehende_mitglieder:True` bekommen alle, die schon auf dem Server sind, direkt die Duelist-Rolle.
+- **Twitch-Live-Alerts:** postet automatisch in 🔴│live-beschwörung und pingt die 🔴 Stream-Ping-Rolle.
   Je nach Spiel kommt ein eigener Spruch (Master Duel / Rebirth of Souls). Nach dem Stream wird die Nachricht zu „Stream beendet“ mit Dauer.
-- Regeln + Verify-Button: Wer die Regeln akzeptiert, bekommt 🃏 Duelist und sieht den ganzen Server.
-- Self-Roles per Button in 🎴│deck-auswahl (erweiterbar über `config.py`).
-- Willkommens-Nachricht in 👋│ankunft-in-orth.
+- **Autoban-Fallgrube:** Wer in 🚨│autoban-fallgrube schreibt, wird sofort gebannt (gegen gehackte Spam-Accounts).
+  Das Team wird nie gebannt. Die Statistik zählt im Embed mit, jeder Bann landet in 🤖│bot-log.
+- **Regeln + Verify-Button:** Wer die Regeln akzeptiert, bekommt 🃏 Duelist und sieht den ganzen Server.
+- **Reaktionsrollen** in 🎴│deck-auswahl: Stream-, Giveaway-, Umfrage- und Social-Ping sowie die Künstler-Rolle.
+- **Künstler-Galerie:** Alle sehen und reagieren, nur 🎨 Künstler dürfen posten.
+- **Willkommensnachricht** in 👋│ankunft-in-orth.
 - `/streamplan setzen | pause | leeren` pflegt den Wochenplan als Embed in 📅│streamplan.
 - `/livetest` zeigt dir eine Vorschau vom Live-Alert und prüft die Twitch-Verbindung.
-- `/panel` postet das Regeln- oder Self-Role-Panel neu.
+- `/panel` postet das Regeln-, Reaktionsrollen- oder Autoban-Panel neu.
 
 ---
 
@@ -56,7 +60,8 @@ Yu-Gi-Oh × Lunalight × Made in Abyss Theme · Python (discord.py) · läuft au
 2. Rollen per Hand vergeben: Streamer, Admins (⚪ Weiße Pfeife), Mods (🔮 Charmer)
 3. `/livetest` → prüft, ob Twitch verbunden ist
 4. `/streamplan setzen tag:Freitag uhrzeit:20:00 spiel:Master Duel`
-5. Alte Channels prüfen: Die sind evtl. noch für alle sichtbar. Verschieben, anpassen oder löschen.
+5. Bot-Rolle ganz nach oben ziehen, sonst kann die Fallgrube niemanden bannen
+6. Alte Channels prüfen: Die sind evtl. noch für alle sichtbar. Verschieben, anpassen oder löschen.
 
 ---
 
@@ -69,10 +74,11 @@ Danach neu deployen und `/setup` nochmal ausführen. Neue Sachen werden ergänzt
 Dann entweder den Namen auch in `config.py` ändern oder per Railway-Variable fest verknüpfen,
 z. B. `CHANNEL_LIVE_ID=123456789` (Schema: `CHANNEL_<KEY>_ID`, der Key steht in `config.py`).
 
-### Neue Self-Role hinzufügen
+### Neue Reaktionsrolle hinzufügen
 1. In `config.py` bei `ROLLEN` eintragen
-2. Bei `SELFROLE_PANELS` als Button eintragen (oder ein neues Panel anlegen)
-3. Deployen → `/setup` (legt die Rolle an) → `/panel art:Self-Roles`
+2. Bei `REAKTIONS_PANELS` mit Emoji eintragen (oder ein neues Panel anlegen)
+3. Deployen → `/setup` (legt die Rolle an und postet neue Panels)
+4. Wurde ein bestehendes Panel geändert: `/panel art:Reaktionsrollen` und das alte Panel löschen
 
 ### Twitch-Sub-Rolle
 Sobald Kapuziner98 Affiliate ist: Servereinstellungen → Integrationen → Twitch verbinden.

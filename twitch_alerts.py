@@ -1,7 +1,7 @@
 """Twitch-Live-Alerts: postet automatisch in #live-beschwörung, wenn Kapuziner98 live geht.
 
 - fragt jede Minute die Twitch-API (Helix) ab
-- pingt die 🔔 Live-Ping-Rolle
+- pingt die 🔴 Stream-Ping-Rolle
 - aktualisiert die Nachricht bei Spiel-/Titelwechsel
 - macht nach Stream-Ende "Stream beendet" + Dauer draus
 - übersteht Bot-Neustarts (findet seine Nachricht über die Stream-ID wieder)

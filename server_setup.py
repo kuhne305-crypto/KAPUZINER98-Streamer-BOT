@@ -1,8 +1,9 @@
 """/setup – legt fehlende Rollen, Kategorien und Channels im Kapuziner98-Theme an.
 LÖSCHT NICHTS. Was es schon gibt (gleicher Name), wird übersprungen.
-Man kann /setup also jederzeit nochmal ausführen, z. B. nach neuen Einträgen in config.py.
+Was es unter einem ALTEN Namen gibt (siehe "alt" in config.py), wird umbenannt.
+Man kann /setup also jederzeit nochmal ausführen, z. B. nach Änderungen in config.py.
 
-/panel – postet Regeln- oder Self-Role-Panels neu.
+/panel – postet das Regeln-, Reaktionsrollen- oder Autoban-Panel neu.
 """
 import logging
 
@@ -11,10 +12,10 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
-from selfroles import alle_panels
+from autoban import anzahl_aus_embed, autoban_embed, finde_panel as finde_autoban_panel
 from streamplan import plan_posten_oder_holen
-from verify import VerifyView, regeln_embed
 from utils import _norm, finde_channel, letzte_bot_nachricht
+from verify import VerifyView, regeln_embed
 
 log = logging.getLogger("setup")
 PO = discord.PermissionOverwrite
@@ -40,16 +41,27 @@ def overwrites(guild: discord.Guild, rollen: dict, zugang: str, typ: str) -> dic
     voice = typ == "voice"
     ow: dict = {}
 
-    kein_schreiben = dict(send_messages=False, add_reactions=False,
-                          create_public_threads=False, create_private_threads=False)
+    keine_threads = dict(create_public_threads=False, create_private_threads=False)
 
     if zugang == "oeffentlich_info":
-        ow[ev] = PO(view_channel=True, **({} if voice else kein_schreiben))
+        ow[ev] = PO(view_channel=True) if voice else PO(view_channel=True, send_messages=False,
+                                                         add_reactions=False, **keine_threads)
     elif zugang == "mitglieder_info":
         ow[ev] = PO(view_channel=False)
         if member:
-            ow[member] = PO(view_channel=True, send_messages=False,
-                            create_public_threads=False, create_private_threads=False)
+            ow[member] = PO(view_channel=True, send_messages=False, add_reactions=True, **keine_threads)
+    elif zugang == "kuenstler":
+        ow[ev] = PO(view_channel=False)
+        if member:
+            ow[member] = PO(view_channel=True, send_messages=False, add_reactions=True,
+                            read_message_history=True, send_messages_in_threads=False, **keine_threads)
+        kuenstler = rollen.get("kuenstler")
+        if kuenstler:
+            ow[kuenstler] = PO(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
+    elif zugang == "autoban":
+        # Absichtlich für ALLE offen – Spam-Accounts sollen hier reinschreiben können
+        ow[ev] = PO(view_channel=True, send_messages=True, attach_files=True, embed_links=True,
+                    read_message_history=True, add_reactions=False, **keine_threads)
     elif zugang in ("mitglieder", "voice"):
         ow[ev] = PO(view_channel=False)
         if member:
@@ -68,15 +80,24 @@ def overwrites(guild: discord.Guild, rollen: dict, zugang: str, typ: str) -> dic
 
     # Bot selbst darf immer alles sehen/schreiben
     ow[guild.me] = (PO(view_channel=True, connect=True) if voice
-                    else PO(view_channel=True, send_messages=True, embed_links=True,
+                    else PO(view_channel=True, send_messages=True, embed_links=True, add_reactions=True,
                             manage_messages=True, mention_everyone=True, read_message_history=True))
     return ow
 
 
-def finde_kategorie(guild: discord.Guild, name: str):
-    for c in guild.categories:
-        if c.name.casefold() == name.casefold():
-            return c
+def finde_kategorie(guild: discord.Guild, kat: dict):
+    for name in [kat["name"], *kat.get("alt", [])]:
+        for c in guild.categories:
+            if c.name.casefold() == name.casefold():
+                return c
+    return None
+
+
+def finde_rolle_mit_alt(guild: discord.Guild, daten: dict):
+    for name in [daten["name"], *daten.get("alt", [])]:
+        r = discord.utils.get(guild.roles, name=name)
+        if r:
+            return r
     return None
 
 
@@ -85,7 +106,8 @@ class ServerSetup(commands.Cog):
         self.bot = bot
 
     # ─────────────────────────────────────────────────────────
-    @app_commands.command(name="setup", description="Legt fehlende Rollen & Channels im Kapuziner98-Theme an (löscht nichts)")
+    @app_commands.command(name="setup",
+                          description="Legt fehlende Rollen & Channels im Kapuziner98-Theme an (löscht nichts)")
     @app_commands.describe(bestehende_mitglieder="Allen, die schon auf dem Server sind, direkt die Duelist-Rolle geben?")
     @app_commands.guild_only()
     @app_commands.default_permissions(administrator=True)
@@ -93,7 +115,7 @@ class ServerSetup(commands.Cog):
         await interaction.response.defer(ephemeral=True, thinking=True)
         guild = interaction.guild
         hinweise: list[str] = []
-        neu = {"rollen": 0, "kategorien": 0, "channels": 0, "panels": 0}
+        neu = {"rollen": 0, "kategorien": 0, "channels": 0, "panels": 0, "umbenannt": 0}
 
         if not guild.me.guild_permissions.administrator:
             hinweise.append("⚠️ Der Bot hat kein **Administrator**-Recht – manche Schritte können fehlschlagen.")
@@ -101,7 +123,7 @@ class ServerSetup(commands.Cog):
         # ── 1. Rollen ────────────────────────────────────────
         rollen: dict[str, discord.Role] = {}
         for key, d in config.ROLLEN.items():
-            r = discord.utils.get(guild.roles, name=d["name"])
+            r = finde_rolle_mit_alt(guild, d)
             if r is None:
                 try:
                     r = await guild.create_role(
@@ -112,6 +134,12 @@ class ServerSetup(commands.Cog):
                 except discord.HTTPException as err:
                     hinweise.append(f"⚠️ Rolle `{d['name']}` ging nicht: {err.text}")
                     continue
+            elif r.name != d["name"]:
+                try:
+                    await r.edit(name=d["name"], colour=discord.Colour(d["farbe"]), reason="Kapuziner98 Setup – neuer Name")
+                    neu["umbenannt"] += 1
+                except discord.HTTPException:
+                    hinweise.append(f"⚠️ Rolle `{r.name}` konnte nicht umbenannt werden.")
             rollen[key] = r
 
         # Rollen in Theme-Reihenfolge direkt unter die Bot-Rolle sortieren
@@ -126,27 +154,49 @@ class ServerSetup(commands.Cog):
             except discord.HTTPException:
                 hinweise.append("⚠️ Rollen konnten nicht automatisch sortiert werden – bitte kurz per Hand ziehen.")
         elif neu["rollen"]:
-            hinweise.append("⚠️ Zieh die **Bot-Rolle** in den Servereinstellungen ganz nach oben und führ `/setup` nochmal aus.")
+            hinweise.append("⚠️ Zieh die **Bot-Rolle** in den Servereinstellungen ganz nach oben "
+                            "und führ `/setup` nochmal aus.")
 
         # ── 2. Kategorien & Channels ─────────────────────────
         kanaele: dict[str, discord.abc.GuildChannel] = {}
         for kat in config.KATEGORIEN:
-            kategorie = finde_kategorie(guild, kat["name"])
+            kategorie = finde_kategorie(guild, kat)
             if kategorie is None:
                 kategorie = await guild.create_category(
                     kat["name"], overwrites=overwrites(guild, rollen, kat["zugang"], "category"),
                     reason="Kapuziner98 Setup",
                 )
                 neu["kategorien"] += 1
+            elif kategorie.name.casefold() != kat["name"].casefold():
+                try:
+                    await kategorie.edit(name=kat["name"], reason="Kapuziner98 Setup – neuer Name")
+                    neu["umbenannt"] += 1
+                except discord.HTTPException:
+                    hinweise.append(f"⚠️ Kategorie `{kategorie.name}` konnte nicht umbenannt werden.")
 
             for ch in kat["channels"]:
+                zugang = ch.get("zugang", kat["zugang"])
+                typ = "voice" if ch["typ"] == "voice" else "text"
                 vorhanden = finde_channel(guild, ch["key"])
+
                 if vorhanden:
+                    # Unter altem Namen gefunden → umbenennen + neue Rechte setzen
+                    if _norm(vorhanden.name) != _norm(ch["name"]):
+                        extra = {"topic": ch["topic"]} if typ == "text" and ch.get("topic") else {}
+                        try:
+                            await vorhanden.edit(
+                                name=ch["name"], category=kategorie,
+                                overwrites=overwrites(guild, rollen, zugang, typ),
+                                reason="Kapuziner98 Setup – neuer Name", **extra,
+                            )
+                            neu["umbenannt"] += 1
+                        except discord.HTTPException:
+                            hinweise.append(f"⚠️ `{vorhanden.name}` konnte nicht umbenannt werden.")
                     kanaele[ch["key"]] = vorhanden
                     continue
-                zugang = ch.get("zugang", kat["zugang"])
+
                 try:
-                    if ch["typ"] == "voice":
+                    if typ == "voice":
                         neu_ch = await guild.create_voice_channel(
                             ch["name"], category=kategorie,
                             overwrites=overwrites(guild, rollen, zugang, "voice"), reason="Kapuziner98 Setup",
@@ -163,7 +213,7 @@ class ServerSetup(commands.Cog):
                 except discord.HTTPException as err:
                     hinweise.append(f"⚠️ Channel `{ch['name']}` ging nicht: {err.text}")
 
-        # AFK-Channel setzen, falls noch keiner eingestellt ist
+        # AFK-Channel (Reich der Schatten) setzen, falls noch keiner eingestellt ist
         afk = kanaele.get("afk")
         if afk and guild.afk_channel is None:
             try:
@@ -181,15 +231,15 @@ class ServerSetup(commands.Cog):
                 await regeln_ch.send(embed=regeln_embed(), view=VerifyView())
                 neu["panels"] += 1
 
+        autoban_ch = kanaele.get("autoban")
+        if autoban_ch and not await finde_autoban_panel(autoban_ch, self.bot.user):
+            await autoban_ch.send(embed=autoban_embed(0))
+            neu["panels"] += 1
+
         rollen_ch = kanaele.get("rollen")
-        if rollen_ch:
-            for embed, view in alle_panels():
-                da = await letzte_bot_nachricht(
-                    rollen_ch, self.bot.user,
-                    lambda m, t=embed.title: bool(m.embeds) and m.embeds[0].title == t)
-                if not da:
-                    await rollen_ch.send(embed=embed, view=view)
-                    neu["panels"] += 1
+        rr = self.bot.get_cog("ReaktionsRollen")
+        if rollen_ch and rr:
+            neu["panels"] += await rr.panels_posten(rollen_ch, nur_fehlende=True)
 
         plan_ch = kanaele.get("streamplan")
         if plan_ch:
@@ -210,13 +260,14 @@ class ServerSetup(commands.Cog):
 
         # ── Zusammenfassung ──────────────────────────────────
         embed = discord.Embed(
-            title="✅ Setup abgeschlossen – Lunalight Fusion!",
+            title="✅ Setup abgeschlossen – Lunalight-Fusion!",
             color=config.Farbe.LILA,
             description=(
                 f"**Neu angelegt:** {neu['rollen']} Rollen · {neu['kategorien']} Kategorien · "
                 f"{neu['channels']} Channels · {neu['panels']} Panels\n"
+                f"**Umbenannt:** {neu['umbenannt']}\n"
                 + (f"**Duelist-Rolle verteilt an:** {verifiziert} Mitglieder\n" if bestehende_mitglieder else "")
-                + "\nBestehendes wurde **nicht** angefasst. Alte Channels sind evtl. noch für alle sichtbar – "
+                + "\nGelöscht wurde **nichts**. Alte Channels sind evtl. noch für alle sichtbar – "
                   "die könnt ihr jetzt in Ruhe verschieben oder löschen."
             ),
         )
@@ -225,7 +276,8 @@ class ServerSetup(commands.Cog):
         embed.add_field(
             name="Nächste Schritte",
             value=(
-                "• Streamer-, Admin- & Mod-Rollen per Hand vergeben\n"
+                "• Streamer-, Admin- und Mod-Rollen per Hand vergeben\n"
+                "• Bot-Rolle ganz nach oben ziehen (sonst kann die Fallgrube nicht bannen)\n"
                 "• `/streamplan setzen` für den Wochenplan\n"
                 "• `/livetest` prüft die Twitch-Verbindung"
             ),
@@ -234,17 +286,17 @@ class ServerSetup(commands.Cog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ─────────────────────────────────────────────────────────
-    @app_commands.command(name="panel", description="Regeln- oder Self-Role-Panel neu posten")
+    @app_commands.command(name="panel", description="Regeln-, Reaktionsrollen- oder Autoban-Panel neu posten")
     @app_commands.describe(art="Welches Panel?")
     @app_commands.choices(art=[
         app_commands.Choice(name="Regeln + Verify-Button", value="regeln"),
-        app_commands.Choice(name="Self-Roles (alle Panels)", value="selfroles"),
+        app_commands.Choice(name="Reaktionsrollen (alle Panels)", value="rollen"),
+        app_commands.Choice(name="Autoban-Fallgrube", value="autoban"),
     ])
     @app_commands.guild_only()
     @app_commands.default_permissions(administrator=True)
     async def panel(self, interaction: discord.Interaction, art: app_commands.Choice[str]):
-        key = "regeln" if art.value == "regeln" else "rollen"
-        channel = finde_channel(interaction.guild, key)
+        channel = finde_channel(interaction.guild, art.value)
         if channel is None:
             await interaction.response.send_message("⚠️ Channel nicht gefunden – erst `/setup` ausführen.",
                                                     ephemeral=True)
@@ -252,11 +304,17 @@ class ServerSetup(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         if art.value == "regeln":
             await channel.send(embed=regeln_embed(), view=VerifyView())
+        elif art.value == "autoban":
+            alt = await finde_autoban_panel(channel, self.bot.user)
+            await channel.send(embed=autoban_embed(anzahl_aus_embed(alt.embeds[0]) if alt else 0))
         else:
-            for embed, view in alle_panels():
-                await channel.send(embed=embed, view=view)
-        await interaction.followup.send(f"✅ Gepostet in {channel.mention}. Alte Panels kannst du löschen.",
-                                        ephemeral=True)
+            rr = self.bot.get_cog("ReaktionsRollen")
+            await rr.panels_posten(channel, nur_fehlende=False)
+        await interaction.followup.send(
+            f"✅ Gepostet in {channel.mention}. Das alte Panel kannst du löschen "
+            "(bei Reaktionsrollen funktionieren alte Panels aber auch weiter).",
+            ephemeral=True,
+        )
 
 
 async def setup(bot: commands.Bot):

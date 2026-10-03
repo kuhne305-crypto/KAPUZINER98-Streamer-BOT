@@ -56,7 +56,7 @@ class VerifyView(discord.ui.View):
             return
 
         rollen_ch = finde_channel(interaction.guild, "rollen")
-        hinweis = f"\nHol dir in {rollen_ch.mention} die 🔔 Live-Ping-Rolle!" if rollen_ch else ""
+        hinweis = f"\nIn {rollen_ch.mention} kannst du dir per Reaktion deine Ping-Rollen holen!" if rollen_ch else ""
         await interaction.response.send_message(
             f"🃏 **Willkommen, Duelist!** Du hast jetzt Zugriff auf den ganzen Server.{hinweis}",
             ephemeral=True,
