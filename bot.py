@@ -4,6 +4,20 @@ Start:  python bot.py
 """
 import logging
 import os
+import sys
+
+# Ordner vom Bot immer im Suchpfad (egal von wo gestartet wird)
+ORDNER = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, ORDNER)
+
+# Prüfen, ob alle Dateien hochgeladen wurden – sonst klare Fehlermeldung statt Traceback
+_BENOETIGT = ["config", "utils", "verify", "selfroles", "welcome", "streamplan", "twitch_alerts", "server_setup"]
+_FEHLEN = [f"{n}.py" for n in _BENOETIGT if not os.path.exists(os.path.join(ORDNER, f"{n}.py"))]
+if _FEHLEN:
+    raise SystemExit(
+        "❌ Diese Dateien fehlen im GitHub-Repo (müssen im selben Ordner wie bot.py liegen): "
+        + ", ".join(_FEHLEN)
+    )
 
 import discord
 from discord.ext import commands
@@ -20,12 +34,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 log = logging.getLogger("bot")
 
 ERWEITERUNGEN = [
-    "cogs.verify",
-    "cogs.selfroles",
-    "cogs.welcome",
-    "cogs.streamplan",
-    "cogs.twitch_alerts",
-    "cogs.server_setup",
+    "verify",
+    "selfroles",
+    "welcome",
+    "streamplan",
+    "twitch_alerts",
+    "server_setup",
 ]
 
 

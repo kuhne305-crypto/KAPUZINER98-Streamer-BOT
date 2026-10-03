@@ -11,9 +11,9 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
-from cogs.selfroles import alle_panels
-from cogs.streamplan import plan_posten_oder_holen
-from cogs.verify import VerifyView, regeln_embed
+from selfroles import alle_panels
+from streamplan import plan_posten_oder_holen
+from verify import VerifyView, regeln_embed
 from utils import _norm, finde_channel, letzte_bot_nachricht
 
 log = logging.getLogger("setup")

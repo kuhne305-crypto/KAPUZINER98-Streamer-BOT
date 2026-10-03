@@ -38,7 +38,7 @@ Yu-Gi-Oh × Lunalight × Made in Abyss Theme · Python (discord.py) · läuft au
 5. Erstellen → **Verwalten** → Client-ID kopieren → **Neues Geheimnis** → Secret kopieren
 
 ### 3. Auf Railway hochladen
-1. Den Ordner in ein (privates!) GitHub-Repo packen
+1. **Alle Dateien** in ein (privates!) GitHub-Repo packen – alle `.py`-Dateien liegen direkt nebeneinander (kein Unterordner)
 2. Railway → **New Project** → **Deploy from GitHub repo** → Repo wählen
 3. Im Service unter **Variables** eintragen:
 
