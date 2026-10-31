@@ -92,6 +92,8 @@ def main():
     if not token:
         raise SystemExit("DISCORD_TOKEN fehlt! (Railway → Variables)")
     bot = KapuBot()
+    from volt_credit import volt_start  # Status an VoltStudio.work
+    volt_start(bot)
     bot.tree.on_error = fehler_handler
     bot.run(token, log_handler=None)
 
